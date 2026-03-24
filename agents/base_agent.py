@@ -40,17 +40,29 @@ class BaseAgent:
 
     def _define_tools(self) -> list:
         """定义智能体可用的工具集（OpenAI 格式）"""
-        # ── 智谱内置网页搜索（由智谱后端执行，结果自动注入模型上下文）──
-        builtin_web_search = {
-            "type": "web_search",
-            "web_search": {
-                "enable": True,
-                "search_result": True   # 将搜索结果附加到响应中
-            }
-        }
-
-        # ── 自定义函数工具（不含 web_search，已由内置搜索覆盖）──
+        # 仅使用标准 function 工具，避免向严格兼容 OpenAI 的上游发送扩展 tool type。
         tool_defs = [
+            {
+                "name": "web_search",
+                "description": (
+                    "搜索网络信息并返回结果摘要。"
+                    "用于查找相关新闻、背景资料和公开来源。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "搜索查询词"
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "description": "最多返回结果数，默认 8"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            },
             {
                 "name": "web_fetch",
                 "description": (
@@ -167,14 +179,18 @@ class BaseAgent:
                 }
             }
         ]
-        # 内置搜索在前，自定义函数工具在后
-        return [builtin_web_search] + [{"type": "function", "function": d} for d in tool_defs]
+        return [{"type": "function", "function": d} for d in tool_defs]
 
     def _execute_tool(self, tool_name: str, tool_input: dict) -> str:
-        """执行工具调用并返回结果（web_search 由智谱内置处理，不在此执行）"""
+        """执行工具调用并返回结果"""
         self._tool_call_count += 1
         try:
-            if tool_name == "web_fetch":
+            if tool_name == "web_search":
+                return web_search(
+                    tool_input["query"],
+                    tool_input.get("max_results", 8)
+                )
+            elif tool_name == "web_fetch":
                 return web_fetch(tool_input["url"])
             elif tool_name == "read_file":
                 return read_file(tool_input["path"])
